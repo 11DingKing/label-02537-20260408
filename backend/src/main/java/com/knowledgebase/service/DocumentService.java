@@ -3,6 +3,8 @@ package com.knowledgebase.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.knowledgebase.common.BusinessException;
+import com.knowledgebase.dto.DocumentPreviewDTO;
+import com.knowledgebase.dto.ExcelSheetDTO;
 import com.knowledgebase.entity.KbDocument;
 import com.knowledgebase.entity.KbKnowledgeChunk;
 import com.knowledgebase.mapper.KbDocumentMapper;
@@ -10,15 +12,23 @@ import com.knowledgebase.mapper.KbKnowledgeChunkMapper;
 import com.knowledgebase.service.parser.DocumentParserFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.hwpf.HWPFDocument;
+import org.apache.poi.hwpf.usermodel.Paragraph;
+import org.apache.poi.hwpf.usermodel.Range;
+import org.apache.poi.hwpf.usermodel.Table;
+import org.apache.poi.hwpf.usermodel.TableCell;
+import org.apache.poi.hwpf.usermodel.TableRow;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.List;
-import java.util.UUID;
+import java.io.*;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -126,5 +136,225 @@ public class DocumentService {
                 new LambdaQueryWrapper<KbKnowledgeChunk>()
                         .eq(KbKnowledgeChunk::getDocId, docId)
                         .orderByAsc(KbKnowledgeChunk::getChunkIndex));
+    }
+
+    public DocumentPreviewDTO getPreview(Long docId) {
+        KbDocument doc = docMapper.selectById(docId);
+        if (doc == null) {
+            throw new BusinessException("文档不存在");
+        }
+
+        DocumentPreviewDTO preview = new DocumentPreviewDTO();
+        String fileType = doc.getFileType();
+
+        try {
+            if ("doc".equals(fileType) || "docx".equals(fileType)) {
+                String html = convertWordToHtml(doc.getFilePath(), fileType);
+                preview.setHtml(html);
+            } else if ("xls".equals(fileType) || "xlsx".equals(fileType)) {
+                List<ExcelSheetDTO> sheets = convertExcelToSheets(doc.getFilePath(), fileType);
+                preview.setSheets(sheets);
+            } else {
+                throw new BusinessException("不支持的文档格式");
+            }
+        } catch (Exception e) {
+            log.error("获取文档预览失败: docId={}, error={}", docId, e.getMessage(), e);
+            throw new BusinessException("获取文档预览失败: " + e.getMessage());
+        }
+
+        return preview;
+    }
+
+    private String convertWordToHtml(String filePath, String fileType) throws Exception {
+        if ("doc".equals(fileType)) {
+            return convertDocToHtml(filePath);
+        } else {
+            return convertDocxToHtml(filePath);
+        }
+    }
+
+    private String convertDocToHtml(String filePath) throws Exception {
+        StringBuilder html = new StringBuilder();
+        html.append("<div class=\"word-content\">");
+
+        try (InputStream is = new FileInputStream(filePath);
+             HWPFDocument doc = new HWPFDocument(is)) {
+            
+            Range range = doc.getRange();
+            
+            // 遍历段落和表格
+            int numParagraphs = range.numParagraphs();
+            for (int i = 0; i < numParagraphs; i++) {
+                Paragraph para = range.getParagraph(i);
+                
+                // 检查是否是表格
+                if (para.isInTable()) {
+                    // 找到表格起始位置
+                    Table table = range.getTable(para);
+                    if (table != null) {
+                        html.append(convertTableToHtml(table));
+                        // 跳过表格中的所有段落
+                        i += table.numParagraphs() - 1;
+                        continue;
+                    }
+                }
+                
+                String text = para.text().trim();
+                if (!text.isEmpty()) {
+                    // 根据样式判断标题级别
+                    int styleIndex = para.getStyleIndex();
+                    String tag = "p";
+                    
+                    // 简单的标题检测
+                    if (styleIndex >= 1 && styleIndex <= 9) {
+                        tag = "h" + styleIndex;
+                    }
+                    
+                    html.append("<").append(tag).append(">")
+                        .append(escapeHtml(text))
+                        .append("</").append(tag).append(">");
+                }
+            }
+        }
+
+        html.append("</div>");
+        return html.toString();
+    }
+
+    private String convertDocxToHtml(String filePath) throws Exception {
+        StringBuilder html = new StringBuilder();
+        html.append("<div class=\"word-content\">");
+
+        try (InputStream is = new FileInputStream(filePath);
+             XWPFDocument doc = new XWPFDocument(is)) {
+            
+            // 按文档原始顺序遍历所有元素
+            for (IBodyElement element : doc.getBodyElements()) {
+                if (element instanceof XWPFParagraph para) {
+                    String text = para.getText().trim();
+                    if (!text.isEmpty()) {
+                        // 根据样式判断标题级别
+                        String style = para.getStyle();
+                        String tag = "p";
+                        
+                        if (style != null && style.matches("Heading\\d")) {
+                            int level = Integer.parseInt(style.substring(7));
+                            tag = "h" + level;
+                        }
+                        
+                        html.append("<").append(tag).append(">")
+                            .append(escapeHtml(text))
+                            .append("</").append(tag).append(">");
+                    }
+                } else if (element instanceof XWPFTable table) {
+                    html.append(convertTableToHtml(table));
+                }
+            }
+        }
+
+        html.append("</div>");
+        return html.toString();
+    }
+
+    private String convertTableToHtml(Table table) {
+        StringBuilder html = new StringBuilder();
+        html.append("<table>");
+        
+        int numRows = table.numRows();
+        for (int r = 0; r < numRows; r++) {
+            TableRow row = table.getRow(r);
+            html.append("<tr>");
+            
+            int numCells = row.numCells();
+            for (int c = 0; c < numCells; c++) {
+                TableCell cell = row.getCell(c);
+                String text = cell.text().trim();
+                html.append("<td>").append(escapeHtml(text)).append("</td>");
+            }
+            
+            html.append("</tr>");
+        }
+        
+        html.append("</table>");
+        return html.toString();
+    }
+
+    private String convertTableToHtml(XWPFTable table) {
+        StringBuilder html = new StringBuilder();
+        html.append("<table>");
+        
+        List<XWPFTableRow> rows = table.getRows();
+        for (XWPFTableRow row : rows) {
+            html.append("<tr>");
+            
+            List<XWPFTableCell> cells = row.getTableCells();
+            for (XWPFTableCell cell : cells) {
+                String text = cell.getText().trim();
+                html.append("<td>").append(escapeHtml(text)).append("</td>");
+            }
+            
+            html.append("</tr>");
+        }
+        
+        html.append("</table>");
+        return html.toString();
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&#39;");
+    }
+
+    private List<ExcelSheetDTO> convertExcelToSheets(String filePath, String fileType) throws Exception {
+        List<ExcelSheetDTO> sheets = new ArrayList<>();
+        boolean isXlsx = "xlsx".equals(fileType);
+
+        try (InputStream is = new FileInputStream(filePath);
+             Workbook workbook = isXlsx ? new XSSFWorkbook(is) : new HSSFWorkbook(is)) {
+            
+            DataFormatter formatter = new DataFormatter();
+
+            for (int s = 0; s < workbook.getNumberOfSheets(); s++) {
+                Sheet sheet = workbook.getSheetAt(s);
+                ExcelSheetDTO sheetDTO = new ExcelSheetDTO();
+                sheetDTO.setName(sheet.getSheetName());
+
+                List<String> headers = new ArrayList<>();
+                List<Map<Integer, String>> rows = new ArrayList<>();
+
+                // 获取表头（第一行）
+                Row headerRow = sheet.getRow(0);
+                if (headerRow != null) {
+                    for (int c = 0; c < headerRow.getLastCellNum(); c++) {
+                        Cell cell = headerRow.getCell(c);
+                        headers.add(cell != null ? formatter.formatCellValue(cell) : "");
+                    }
+                }
+                sheetDTO.setHeaders(headers);
+
+                // 获取数据行
+                for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                    Row row = sheet.getRow(r);
+                    if (row == null) continue;
+
+                    Map<Integer, String> rowData = new LinkedHashMap<>();
+                    for (int c = 0; c < row.getLastCellNum(); c++) {
+                        Cell cell = row.getCell(c);
+                        String value = cell != null ? formatter.formatCellValue(cell) : "";
+                        rowData.put(c, value);
+                    }
+                    rows.add(rowData);
+                }
+                sheetDTO.setRows(rows);
+
+                sheets.add(sheetDTO);
+            }
+        }
+
+        return sheets;
     }
 }

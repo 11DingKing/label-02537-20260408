@@ -44,6 +44,11 @@ public class DocumentController {
         return Result.ok(documentService.getChunks(id));
     }
 
+    @GetMapping("/{id}/preview")
+    public Result<?> preview(@PathVariable Long id) {
+        return Result.ok(documentService.getPreview(id));
+    }
+
     @DeleteMapping("/{id}")
     @OperationLog(module = "文档管理", operation = "删除文档")
     public Result<?> delete(@PathVariable Long id) {
