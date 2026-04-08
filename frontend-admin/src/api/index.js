@@ -32,6 +32,7 @@ export const uploadDocument = (file, kbId) => {
 export const deleteDocument = id => request.delete(`/documents/${id}`)
 export const reparseDocument = id => request.post(`/documents/${id}/reparse`)
 export const getDocChunks = id => request.get(`/documents/${id}/chunks`)
+export const getDocPreview = id => request.get(`/documents/${id}/preview`)
 
 // Search
 export const searchKnowledge = params => request.get('/search', { params })

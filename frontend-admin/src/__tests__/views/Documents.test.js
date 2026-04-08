@@ -19,7 +19,33 @@ vi.mock('../../api', () => ({
   deleteDocument: vi.fn().mockResolvedValue({ code: 200 }),
   reparseDocument: vi.fn().mockResolvedValue({ code: 200 }),
   getDocChunks: vi.fn().mockResolvedValue({ data: [{ id: 1, content: '测试内容', chunkIndex: 0, sourceInfo: '段落' }] }),
-  getKbList: vi.fn().mockResolvedValue({ data: { records: [{ id: 1, name: '测试知识库' }] } })
+  getKbList: vi.fn().mockResolvedValue({ data: { records: [{ id: 1, name: '测试知识库' }] } }),
+  getDocPreview: vi.fn().mockImplementation((id) => {
+    if (id === 1) {
+      // Word 文档预览
+      return Promise.resolve({
+        data: {
+          html: '<h1>Java基础</h1><p>这是一段测试内容</p>'
+        }
+      })
+    } else {
+      // Excel 文档预览
+      return Promise.resolve({
+        data: {
+          sheets: [
+            {
+              name: 'Sheet1',
+              headers: ['姓名', '年龄', '城市'],
+              rows: [
+                { 0: '张三', 1: '25', 2: '北京' },
+                { 0: '李四', 1: '30', 2: '上海' }
+              ]
+            }
+          ]
+        }
+      })
+    }
+  })
 }))
 
 describe('Documents.vue', () => {
@@ -95,5 +121,28 @@ describe('Documents.vue', () => {
     expect(wrapper.text()).toContain('知识块')
     expect(wrapper.text()).toContain('重新解析')
     expect(wrapper.text()).toContain('删除')
+  })
+
+  it('文件单元格在解析完成时可点击', async () => {
+    const wrapper = await mountDocs()
+    const fileCells = wrapper.findAll('.file-cell')
+    expect(fileCells.length).toBe(2)
+    // 检查是否有 clickable 类
+    expect(fileCells[0].classes()).toContain('clickable')
+    expect(fileCells[1].classes()).toContain('clickable')
+  })
+
+  it('getDocPreview API 被正确 mock', async () => {
+    const { getDocPreview } = await import('../../api')
+    
+    // 测试 Word 文档预览
+    const wordPreview = await getDocPreview(1)
+    expect(wordPreview.data.html).toBe('<h1>Java基础</h1><p>这是一段测试内容</p>')
+    
+    // 测试 Excel 文档预览
+    const excelPreview = await getDocPreview(2)
+    expect(excelPreview.data.sheets.length).toBe(1)
+    expect(excelPreview.data.sheets[0].name).toBe('Sheet1')
+    expect(excelPreview.data.sheets[0].headers).toEqual(['姓名', '年龄', '城市'])
   })
 })
