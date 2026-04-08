@@ -1,0 +1,68 @@
+#!/bin/sh
+# Maven Wrapper script
+# Auto-generated
+
+set -e
+
+# Determine the project base directory
+MAVEN_PROJECTBASEDIR="${MAVEN_BASEDIR:-$(cd "$(dirname "$0")" && pwd)}"
+export MAVEN_PROJECTBASEDIR
+
+MAVEN_WRAPPER_JAR="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.jar"
+MAVEN_WRAPPER_PROPERTIES="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.properties"
+
+# Download maven-wrapper.jar if not present
+if [ ! -f "$MAVEN_WRAPPER_JAR" ]; then
+  if [ -f "$MAVEN_WRAPPER_PROPERTIES" ]; then
+    WRAPPER_URL=$(grep 'wrapperUrl' "$MAVEN_WRAPPER_PROPERTIES" | cut -d'=' -f2- | tr -d '[:space:]')
+    if [ -n "$WRAPPER_URL" ]; then
+      echo "Downloading Maven Wrapper..."
+      if command -v curl > /dev/null 2>&1; then
+        curl -sL -o "$MAVEN_WRAPPER_JAR" "$WRAPPER_URL"
+      elif command -v wget > /dev/null 2>&1; then
+        wget -q -O "$MAVEN_WRAPPER_JAR" "$WRAPPER_URL"
+      fi
+    fi
+  fi
+fi
+
+# If wrapper jar exists, use it
+if [ -f "$MAVEN_WRAPPER_JAR" ]; then
+  exec java $MAVEN_OPTS \
+    -classpath "$MAVEN_WRAPPER_JAR" \
+    org.apache.maven.wrapper.MavenWrapperMain "$@"
+fi
+
+# Fallback: try to find mvn in PATH
+if command -v mvn > /dev/null 2>&1; then
+  exec mvn "$@"
+fi
+
+# Fallback: try to download and use Maven directly
+DIST_URL=$(grep 'distributionUrl' "$MAVEN_WRAPPER_PROPERTIES" | cut -d'=' -f2- | tr -d '[:space:]')
+MAVEN_HOME="$HOME/.m2/wrapper/dists/$(basename "$DIST_URL" .zip)"
+
+if [ ! -d "$MAVEN_HOME" ]; then
+  echo "Downloading Maven distribution..."
+  mkdir -p "$HOME/.m2/wrapper/dists"
+  TMPFILE=$(mktemp)
+  if command -v curl > /dev/null 2>&1; then
+    curl -sL -o "$TMPFILE" "$DIST_URL"
+  elif command -v wget > /dev/null 2>&1; then
+    wget -q -O "$TMPFILE" "$DIST_URL"
+  fi
+  unzip -q "$TMPFILE" -d "$HOME/.m2/wrapper/dists"
+  rm -f "$TMPFILE"
+fi
+
+MAVEN_BIN=$(find "$MAVEN_HOME" -name "mvn" -path "*/bin/mvn" 2>/dev/null | head -1)
+if [ -z "$MAVEN_BIN" ]; then
+  MAVEN_BIN=$(find "$HOME/.m2/wrapper/dists" -name "mvn" -path "*/bin/mvn" 2>/dev/null | head -1)
+fi
+
+if [ -n "$MAVEN_BIN" ]; then
+  exec "$MAVEN_BIN" "$@"
+else
+  echo "Error: Cannot find Maven. Please install Maven or fix the wrapper configuration."
+  exit 1
+fi

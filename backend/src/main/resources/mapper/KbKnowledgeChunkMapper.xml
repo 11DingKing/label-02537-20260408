@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.knowledgebase.mapper.KbKnowledgeChunkMapper">
+
+    <!-- 全文检索，使用 foreach 避免 SQL 注入 -->
+    <select id="fullTextSearch" resultType="com.knowledgebase.entity.KbKnowledgeChunk">
+        SELECT * FROM kb_knowledge_chunk 
+        WHERE MATCH(content) AGAINST(#{keyword} IN BOOLEAN MODE) 
+        AND kb_id IN 
+        <foreach collection="kbIds" item="kbId" open="(" separator="," close=")">
+            #{kbId}
+        </foreach>
+        ORDER BY id DESC 
+        LIMIT #{limit}
+    </select>
+
+</mapper>

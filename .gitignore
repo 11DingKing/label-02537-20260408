@@ -1,0 +1,27 @@
+# Java / Maven
+backend/target/
+*.class
+*.jar
+*.war
+*.log
+.idea/
+*.iml
+
+# Node / Frontend
+frontend-admin/node_modules/
+frontend-admin/dist/
+frontend-admin/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+
+# Env
+.env
+.env.local
+
+# Uploads
+uploads/
